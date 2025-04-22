@@ -5,6 +5,9 @@ from pathlib import Path
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+import time
+
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -41,10 +44,11 @@ def save_model(model, path: Path):
     joblib.dump(model, path)
 
 def main():
+    start = time.time()
     df = load_data(DATA_PATH)
 
     # Split features and target
-    X = df.drop(columns=["last_count"])
+    X = df.drop(columns=["last_count", "percent_full"] )
     y = df["last_count"]
 
     # Train/test split
@@ -56,6 +60,9 @@ def main():
     model = train_model(X_train, y_train)
     evaluate_model(model, X_test, y_test)
     save_model(model, MODEL_PATH)
+
+    
+    print(f"Training completed in {time.time() - start:.2f} seconds")
 
     logging.info("Training complete.")
 
