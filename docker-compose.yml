@@ -1,0 +1,8 @@
+services:
+  gym_scraper:
+    build:
+      context: ./injestion
+      dockerfile: Dockerfile
+    volumes:
+      - ./data/raw:/app/data/raw
+    restart: always
