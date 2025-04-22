@@ -3,9 +3,12 @@ import csv
 import os
 from datetime import datetime, timezone
 from time import sleep
+import logging
+logging.basicConfig(level=logging.INFO)
+
 
 URL = "https://goboardapi.azurewebsites.net/api/FacilityCount/GetCountsByAccount?AccountAPIKey=8e2c21d2-6f5d-45c1-af9e-c23aebfda68b"
-CSV_FILE = "/Users/maxmartin/projects/gator-gauge/data/raw/gym_raw_data.csv"
+CSV_FILE = "data/raw/gym_raw_data.csv"
 
 def fetch_json():
     r = requests.get(URL)
@@ -32,7 +35,7 @@ def format_rows(json_data):
                 "is_closed": loc["IsClosed"],
             })
         except Exception as e:
-            print(f"❌ Skipping location due to error: {e}")
+            logging.error(f"❌ Skipping location due to error: {e}")
     return rows
 
 def write_csv(rows):
@@ -48,10 +51,11 @@ def write_csv(rows):
 if __name__ == "__main__":
     data = fetch_json()
     rows = format_rows(data)
+    logging.info("Gym scraper started")
     while True:
         if rows:
             write_csv(rows)
-            print(f"✅ Logged {len(rows)} entries to {CSV_FILE}")
+            logging.info(f"✅ Logged {len(rows)} entries to {CSV_FILE}")
         else:
-            print("⚠️ No data to write.")
+            logging.warning("⚠️ No data to write.")
         sleep(60)
