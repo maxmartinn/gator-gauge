@@ -1,7 +1,12 @@
 import pandas as pd
 from pathlib import Path
+import logging
+logging.basicConfig(level=logging.INFO)
 
+
+logging.info("Starting Preproccessing")
 # Paths
+
 raw_path = Path("../data/raw/gym_raw_data.csv")
 processed_path = Path("../data/processed/gym_processed_data.csv")
 
