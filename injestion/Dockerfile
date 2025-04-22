@@ -1,5 +1,5 @@
 # Use a more specific and secure Python runtime as a parent image
-FROM python:3.13-slim-bookworm
+FROM python:3.9-slim-bookworm
 
 # Set the working directory in the container
 WORKDIR /app
