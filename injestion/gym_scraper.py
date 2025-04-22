@@ -24,6 +24,10 @@ def format_rows(json_data):
             count = int(loc["LastCount"])
             capacity = int(loc["TotalCapacity"])
             percent = round((count / capacity) * 100, 2) if capacity > 0 else 0
+
+            # Parse and reformat the last updated time
+            last_updated_source_time = datetime.fromisoformat(loc["LastUpdatedDateAndTime"]).astimezone(timezone.utc).isoformat()
+
             rows.append({
                 "pulled_at_utc": now,
                 "facility_name": loc["FacilityName"].strip(),
@@ -31,7 +35,7 @@ def format_rows(json_data):
                 "last_count": count,
                 "total_capacity": capacity,
                 "percent_full": percent,
-                "last_updated_source_time": loc["LastUpdatedDateAndTime"],
+                "last_updated_source_time": last_updated_source_time,
                 "is_closed": loc["IsClosed"],
             })
         except Exception as e:
@@ -58,4 +62,4 @@ if __name__ == "__main__":
             logging.info(f"✅ Logged {len(rows)} entries to {CSV_FILE}")
         else:
             logging.warning("⚠️ No data to write.")
-        sleep(60)
+        sleep(10)
