@@ -41,8 +41,8 @@ def save_data(df: pd.DataFrame, path: Path):
     df.to_csv(path, index=False)
 
 def main():
-    raw_path = Path("../data/raw/gym_raw_data.csv")
-    processed_path = Path("../data/processed/gym_processed_data.csv")
+    raw_path = Path("data/raw/gym_raw_data.csv")
+    processed_path = Path("data/processed/gym_processed_data.csv")
 
     df = load_data(raw_path)
     df = make_timestamps_utc(df)
