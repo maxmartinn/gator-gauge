@@ -4,10 +4,12 @@ import os
 from datetime import datetime, timezone
 from time import sleep
 import logging
+from dotenv import load_dotenv
 logging.basicConfig(level=logging.INFO)
+load_dotenv()
+SCRAPER_KEY = os.getenv("SCRAPER_KEY")
 
-
-URL = "https://goboardapi.azurewebsites.net/api/FacilityCount/GetCountsByAccount?AccountAPIKey=8e2c21d2-6f5d-45c1-af9e-c23aebfda68b"
+URL = f"https://goboardapi.azurewebsites.net/api/FacilityCount/GetCountsByAccount?AccountAPIKey={SCRAPER_KEY}"
 CSV_FILE = "data/raw/gym_raw_data.csv"
 
 def fetch_json():
