@@ -30,3 +30,6 @@ out/
 *.swp
 *.swo
 *.swn
+
+# Python virtual environment
+.venv
