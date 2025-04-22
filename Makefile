@@ -7,4 +7,8 @@ train:
 report:
 	python scripts/generate_report.py
 
+predict:
+	python scripts/basic_predict.py
+
 all: preprocess train report
+
