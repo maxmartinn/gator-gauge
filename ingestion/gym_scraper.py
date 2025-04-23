@@ -64,4 +64,4 @@ if __name__ == "__main__":
             logging.info(f"✅ Logged {len(rows)} entries to {CSV_FILE}")
         else:
             logging.warning("⚠️ No data to write.")
-        sleep(10)
+        sleep(3600)
