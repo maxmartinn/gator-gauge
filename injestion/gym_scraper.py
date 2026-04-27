@@ -15,7 +15,7 @@ SOURCE_TIMEZONE = ZoneInfo("America/New_York")
 
 logging.basicConfig(level=logging.INFO)
 
-URL = "https://goboardapi.azurewebsites.net/api/FacilityCount/GetCountsByAccount?AccountAPIKey=8e2c21d2-6f5d-45c1-af9e-c23aebfda68b"
+DEFAULT_API_BASE_URL = "https://goboardapi.azurewebsites.net/api/FacilityCount/GetCountsByAccount"
 CSV_FILE = "data/raw/gym_raw_data.csv"
 ALLOWED_LOCATIONS = {
     "SWRC Weight Room",
@@ -62,14 +62,22 @@ FIELDNAMES = [
 
 
 def fetch_json():
+    url = os.environ.get("GATOR_GAUGE_API_URL")
+    api_key = os.environ.get("GATOR_GAUGE_ACCOUNT_API_KEY")
+    if not url and api_key:
+        url = f"{DEFAULT_API_BASE_URL}?AccountAPIKey={api_key}"
+    if not url:
+        raise RuntimeError(
+            "Set GATOR_GAUGE_API_URL or GATOR_GAUGE_ACCOUNT_API_KEY before running ingestion."
+        )
     try:
-        r = requests.get(URL, timeout=10)
+        r = requests.get(url, timeout=10)
         r.raise_for_status()
         return r.json()
     except requests.exceptions.SSLError:
         logging.warning("Python SSL request failed; retrying with curl")
         completed = subprocess.run(
-            ["curl", "--fail", "--silent", "--show-error", URL],
+            ["curl", "--fail", "--silent", "--show-error", url],
             capture_output=True, check=True, text=True, timeout=15,
         )
         return json.loads(completed.stdout)

@@ -65,4 +65,5 @@ Environment variables:
 - `GATOR_GAUGE_S3_BUCKET`: defaults to `gator-gains-data`.
 - `GATOR_GAUGE_S3_PREFIX`: defaults to `bronze/gym_counts`.
 - `GATOR_GAUGE_LOCAL_DIR`: defaults to `data/raw`.
-- `GATOR_GAUGE_API_URL`: overrides the GoBoard API URL.
+- `GATOR_GAUGE_ACCOUNT_API_KEY`: GoBoard account API key used to build the count URL.
+- `GATOR_GAUGE_API_URL`: full GoBoard API URL. Use this instead of `GATOR_GAUGE_ACCOUNT_API_KEY` only when you need to override the entire endpoint.

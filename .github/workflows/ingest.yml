@@ -40,8 +40,11 @@ jobs:
           AWS_DEFAULT_REGION:    us-east-1
           GATOR_GAUGE_S3_BUCKET: gator-gains-data
           GATOR_GAUGE_S3_PREFIX: bronze/gym_counts
+          GATOR_GAUGE_ACCOUNT_API_KEY: ${{ secrets.GATOR_GAUGE_ACCOUNT_API_KEY }}
         run: python injestion/gym_scraper.py --no-local
 
       - name: Run ingestion (dry run — fetch only)
         if: github.event.inputs.dry_run == 'true'
+        env:
+          GATOR_GAUGE_ACCOUNT_API_KEY: ${{ secrets.GATOR_GAUGE_ACCOUNT_API_KEY }}
         run: python injestion/gym_scraper.py --no-local --no-s3
