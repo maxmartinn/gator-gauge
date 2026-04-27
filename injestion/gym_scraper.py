@@ -12,6 +12,27 @@ logging.basicConfig(level=logging.INFO)
 
 URL = "https://goboardapi.azurewebsites.net/api/FacilityCount/GetCountsByAccount?AccountAPIKey=8e2c21d2-6f5d-45c1-af9e-c23aebfda68b"
 CSV_FILE = "data/raw/gym_raw_data.csv"
+ALLOWED_LOCATIONS = {
+    "SWRC Weight Room",
+    "SWRC Cardio Room 1",
+    "SWRC Cardio Room 2",
+    "Multi-Purpose Court 1",
+    "Multi-Purpose Court 2",
+    "Multi-Purpose Court 3",
+    "Multi-Purpose Court 4",
+    "Multi-Purpose Court 5",
+    "Multi-Purpose Court 6",
+    "SWRC Tennis Courts",
+    "SRFC Weight Room",
+    "SRFC Cardio Room",
+    "SRFC Lower Functional Area",
+    "SRFC Squash",
+    "SRFC Table Tennis",
+    "SRFC Multi-purpose Court",
+    "SRFC Racquetball",
+    "Florida Pool",
+}
+
 FIELDNAMES = [
     "pulled_at_utc",
     "facility_name",
@@ -34,6 +55,8 @@ def format_rows(json_data):
     now = datetime.now(timezone.utc).isoformat()
     rows = []
     for loc in json_data:
+        if loc.get("LocationName", "").strip() not in ALLOWED_LOCATIONS:
+            continue
         try:
             count = int(loc["LastCount"])
             capacity = int(loc["TotalCapacity"])
