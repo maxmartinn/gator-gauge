@@ -29,6 +29,50 @@ A Streamlit dashboard for visualizing UF gym occupancy trends and patterns.
 3. **Open in browser:**
    Navigate to `http://localhost:8501`
 
+## Deploying to Streamlit Community Cloud
+
+Streamlit Community Cloud is the cheapest working deployment option for this app.
+GitHub Pages cannot run this dashboard because it is a live Python/Streamlit app.
+
+1. Push the repo to GitHub.
+2. In Streamlit Community Cloud, create a new app from the GitHub repo.
+3. Use this app entry point:
+   ```text
+   dashboard/app.py
+   ```
+4. Keep `requirements.txt` at the repo root. It points to `dashboard/requirements.txt`.
+5. Add AWS credentials in Streamlit app secrets:
+   ```toml
+   [aws]
+   region_name = "us-east-1"
+   aws_access_key_id = "YOUR_READ_ONLY_ACCESS_KEY_ID"
+   aws_secret_access_key = "YOUR_READ_ONLY_SECRET_ACCESS_KEY"
+   ```
+
+Use an IAM user or access key with read-only access to the dashboard bucket. A minimal policy looks like:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:ListBucket"],
+      "Resource": "arn:aws:s3:::gator-gains-data"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": "arn:aws:s3:::gator-gains-data/*"
+    }
+  ]
+}
+```
+
+Do not commit `.streamlit/secrets.toml` or `dashboard/.streamlit/secrets.toml`.
+Use `.streamlit/secrets.toml.example` for root-level Streamlit runs and
+`dashboard/.streamlit/secrets.toml.example` when running from inside `dashboard/`.
+
 ## Features
 
 - **Occupancy Trends**: Line chart showing % full over time for selected locations
@@ -36,6 +80,8 @@ A Streamlit dashboard for visualizing UF gym occupancy trends and patterns.
 - **Facility Comparison**: Bar chart comparing average occupancy across facilities
 - **Peak Hours Table**: Top 10 busiest hour-location combinations
 - **Key Metrics**: Average occupancy, peak occupancy, number of locations, data points
+- **Classes**: UF RecSports class schedule with per-class calendar downloads
+- **Cameras & Counts**: RecSports camera feeds paired with latest S3 count data
 
 ## File Structure
 
@@ -54,6 +100,7 @@ dashboard/
 ## Configuration
 
 - **AWS Profile**: Set `AWS_PROFILE=gator-gauge` environment variable before running
+- **Streamlit Cloud**: Add `[aws]` credentials through app secrets
 - **Cache TTL**: Data is cached for 10 minutes (see `data_access.py`)
 - **Theme**: Configured in `.streamlit/config.toml`
 
@@ -64,8 +111,8 @@ dashboard/
 - Check IAM user has `S3ReadOnlyAccess` or equivalent permissions
 
 ### "No data available"
-- Default date range is last 7 days
-- S3 data currently spans 2025-04-22 to 2025-05-15
+- Default date range starts at the first actual SWRC Fitness Total data day
+- S3 data currently spans 2025-05-10 to 2026-04-27 for SWRC Fitness Total
 - Adjust date range in sidebar filters
 
 ### Port 8501 already in use

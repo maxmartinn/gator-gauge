@@ -21,6 +21,8 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+dashboard/.streamlit/secrets.toml
+.streamlit/secrets.toml
 
 # Build output
 dist/
