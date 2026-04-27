@@ -33,6 +33,17 @@ ALLOWED_LOCATIONS = {
     "Florida Pool",
 }
 
+AGGREGATES = {
+    "SWRC Fitness Total": {
+        "facility_name": "SWRC",
+        "members": ["SWRC Weight Room", "SWRC Cardio Room 1", "SWRC Cardio Room 2"],
+    },
+    "SRFC Fitness Total": {
+        "facility_name": "SRFC",
+        "members": ["SRFC Weight Room", "SRFC Cardio Room", "SRFC Lower Functional Area"],
+    },
+}
+
 FIELDNAMES = [
     "pulled_at_utc",
     "facility_name",
@@ -78,6 +89,26 @@ def format_rows(json_data):
             })
         except Exception as e:
             logging.error(f"Skipping location due to error: {e}")
+
+    by_location = {r["location_name"]: r for r in rows}
+    for agg_name, agg in AGGREGATES.items():
+        members = [by_location[m] for m in agg["members"] if m in by_location]
+        if not members:
+            continue
+        total_count = sum(m["last_count"] for m in members)
+        total_capacity = sum(m["total_capacity"] for m in members)
+        percent = round((total_count / total_capacity) * 100, 2) if total_capacity > 0 else 0
+        latest_source = max(m["last_updated_source_time"] for m in members)
+        rows.append({
+            "pulled_at_utc": now,
+            "facility_name": agg["facility_name"],
+            "location_name": agg_name,
+            "last_count": total_count,
+            "total_capacity": total_capacity,
+            "percent_full": percent,
+            "last_updated_source_time": latest_source,
+            "is_closed": all(m["is_closed"] for m in members),
+        })
     return rows
 
 
@@ -103,14 +134,17 @@ def upload_to_s3(rows):
     bucket = os.environ["GATOR_GAUGE_S3_BUCKET"]
     prefix = os.environ.get("GATOR_GAUGE_S3_PREFIX", "bronze/gym_counts").strip("/")
     now = datetime.now(timezone.utc)
-    key = f"{prefix}/dt={now:%Y-%m-%d}/gym_counts_{now:%Y%m%dT%H%M%SZ}.csv"
-    boto3.client("s3").put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=rows_to_csv_bytes(rows),
-        ContentType="text/csv",
-    )
-    logging.info(f"Uploaded {len(rows)} rows to s3://{bucket}/{key}")
+    s3 = boto3.client("s3")
+    for row in rows:
+        location = row["location_name"].replace("/", "_")
+        key = (
+            f"{prefix}/location_name={location}"
+            f"/year={now:%Y}/month={now:%m}/day={now:%d}"
+            f"/gym_data_{now:%Y%m%dT%H%M%SZ}.csv"
+        )
+        body = rows_to_csv_bytes([row])
+        s3.put_object(Bucket=bucket, Key=key, Body=body, ContentType="text/csv")
+    logging.info(f"Uploaded {len(rows)} per-location objects to s3://{bucket}/{prefix}/")
 
 
 def run(no_local=False, no_s3=False):
