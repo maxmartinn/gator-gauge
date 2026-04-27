@@ -33,6 +33,17 @@ ALLOWED_LOCATIONS = {
     "Florida Pool",
 }
 
+AGGREGATES = {
+    "SWRC Fitness Total": {
+        "facility_name": "SWRC",
+        "members": ["SWRC Weight Room", "SWRC Cardio Room 1", "SWRC Cardio Room 2"],
+    },
+    "SRFC Fitness Total": {
+        "facility_name": "SRFC",
+        "members": ["SRFC Weight Room", "SRFC Cardio Room"],
+    },
+}
+
 FIELDNAMES = [
     "pulled_at_utc",
     "facility_name",
@@ -78,6 +89,26 @@ def format_rows(json_data):
             })
         except Exception as e:
             logging.error(f"Skipping location due to error: {e}")
+
+    by_location = {r["location_name"]: r for r in rows}
+    for agg_name, agg in AGGREGATES.items():
+        members = [by_location[m] for m in agg["members"] if m in by_location]
+        if not members:
+            continue
+        total_count = sum(m["last_count"] for m in members)
+        total_capacity = sum(m["total_capacity"] for m in members)
+        percent = round((total_count / total_capacity) * 100, 2) if total_capacity > 0 else 0
+        latest_source = max(m["last_updated_source_time"] for m in members)
+        rows.append({
+            "pulled_at_utc": now,
+            "facility_name": agg["facility_name"],
+            "location_name": agg_name,
+            "last_count": total_count,
+            "total_capacity": total_capacity,
+            "percent_full": percent,
+            "last_updated_source_time": latest_source,
+            "is_closed": all(m["is_closed"] for m in members),
+        })
     return rows
 
 
