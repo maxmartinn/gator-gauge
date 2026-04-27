@@ -3,6 +3,29 @@ import plotly.express as px
 import pandas as pd
 import transforms
 
+GAP_THRESHOLD = pd.Timedelta(hours=3)
+
+
+def _insert_gap_breaks(df: pd.DataFrame) -> pd.DataFrame:
+    """Insert NaN rows wherever consecutive samples are more than GAP_THRESHOLD apart.
+
+    Plotly draws straight lines across NaN-free gaps; inserting a NaN forces a break
+    so the chart honestly shows missing data instead of interpolating across it.
+    """
+    if df.empty:
+        return df
+    pieces = []
+    for _, group in df.sort_values("pulled_at_local").groupby("location_name", sort=False):
+        gaps = group["pulled_at_local"].diff() > GAP_THRESHOLD
+        if not gaps.any():
+            pieces.append(group)
+            continue
+        breaks = group.loc[gaps].copy()
+        breaks["pulled_at_local"] = breaks["pulled_at_local"] - GAP_THRESHOLD / 2
+        breaks["percent_full"] = pd.NA
+        pieces.append(pd.concat([group, breaks]).sort_values("pulled_at_local"))
+    return pd.concat(pieces, ignore_index=True)
+
 
 def line_chart_occupancy(df: pd.DataFrame, locations: list = None) -> go.Figure:
     """
@@ -21,7 +44,7 @@ def line_chart_occupancy(df: pd.DataFrame, locations: list = None) -> go.Figure:
         plot_df = df
 
     fig = px.line(
-        plot_df.sort_values("pulled_at_local"),
+        _insert_gap_breaks(plot_df),
         x="pulled_at_local",
         y="percent_full",
         color="location_name",
