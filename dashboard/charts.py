@@ -1,3 +1,4 @@
+import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 import pandas as pd
@@ -22,7 +23,7 @@ def _insert_gap_breaks(df: pd.DataFrame) -> pd.DataFrame:
             continue
         breaks = group.loc[gaps].copy()
         breaks["pulled_at_local"] = breaks["pulled_at_local"] - GAP_THRESHOLD / 2
-        breaks["percent_full"] = pd.NA
+        breaks["percent_full"] = np.nan
         pieces.append(pd.concat([group, breaks]).sort_values("pulled_at_local"))
     return pd.concat(pieces, ignore_index=True)
 
