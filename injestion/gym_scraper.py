@@ -164,6 +164,43 @@ def upload_to_s3(rows):
     logging.info(f"Uploaded {len(rows)} per-location objects to s3://{bucket}/{prefix}/")
 
 
+def silver_key(prefix, location, year, month):
+    return (
+        f"{prefix}/location_name={location.replace('/', '_')}"
+        f"/year={year}/month={month:02d}/data.parquet"
+    )
+
+
+def upload_silver(rows):
+    """Append the new rows into each location's current-month silver Parquet."""
+    import pandas as pd
+
+    bucket = os.environ["GATOR_GAUGE_S3_BUCKET"]
+    prefix = os.environ.get("GATOR_GAUGE_SILVER_PREFIX", "silver/gym_counts").strip("/")
+    now = datetime.now(timezone.utc)
+    s3 = boto3.client("s3")
+
+    by_loc = {}
+    for r in rows:
+        by_loc.setdefault(r["location_name"], []).append(r)
+
+    for location, loc_rows in by_loc.items():
+        key = silver_key(prefix, location, now.year, now.month)
+        new_df = pd.DataFrame(loc_rows)
+        try:
+            existing = s3.get_object(Bucket=bucket, Key=key)["Body"].read()
+            old_df = pd.read_parquet(io.BytesIO(existing))
+            df = pd.concat([old_df, new_df], ignore_index=True)
+        except Exception:
+            df = new_df
+        df = df.drop_duplicates(subset=["pulled_at_utc", "location_name"], keep="last")
+        df = df.sort_values("pulled_at_utc")
+        buf = io.BytesIO()
+        df.to_parquet(buf, index=False, compression="snappy")
+        s3.put_object(Bucket=bucket, Key=key, Body=buf.getvalue(), ContentType="application/octet-stream")
+    logging.info(f"Updated {len(by_loc)} silver Parquet files for {now:%Y-%m}")
+
+
 def run(no_local=False, no_s3=False):
     logging.info("Gym scraper started")
     rows = format_rows(fetch_json())
@@ -175,6 +212,10 @@ def run(no_local=False, no_s3=False):
         logging.info(f"Logged {len(rows)} entries to {CSV_FILE}")
     if not no_s3:
         upload_to_s3(rows)
+        try:
+            upload_silver(rows)
+        except Exception as e:
+            logging.error(f"Silver rollup failed (bronze still uploaded): {e}")
     return len(rows)
 
 

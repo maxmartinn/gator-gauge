@@ -27,7 +27,7 @@ def get_available_locations() -> list[str]:
     Uses delimiter listing — fast, O(1) paginator calls.
     """
     s3 = get_s3_client()
-    prefix = "bronze/gym_counts/"
+    prefix = "silver/gym_counts/"
     paginator = s3.get_paginator("list_objects_v2")
     locations = []
 
@@ -46,84 +46,58 @@ def get_available_locations() -> list[str]:
 
 @st.cache_data(ttl=3600)
 def get_available_dates() -> list[date]:
-    """
-    Return sorted list of all days that have S3 data.
-
-    Uses delimiter listing against a single sample location — O(years × months)
-    paginator calls instead of listing all 17 k objects.
-    """
-    locations = get_available_locations()
-    if not locations:
-        return []
-
+    """Return sorted list of days the silver layer has data for."""
     s3 = get_s3_client()
     paginator = s3.get_paginator("list_objects_v2")
-    # SWRC Fitness Total is the only partition with the full historical
-    # archive (back to 2025); newer per-room partitions only start when
-    # ingestion was rebuilt. Fall back to alphabetical if absent.
-    sample_loc = "SWRC Fitness Total" if "SWRC Fitness Total" in locations else locations[0]
-    base = f"bronze/gym_counts/location_name={sample_loc}/"
-    dates: list[date] = []
-
+    months: set[tuple[int, int]] = set()
+    sample = "SWRC Fitness Total"
+    base = f"silver/gym_counts/location_name={sample}/"
     try:
-        # Level 1 — year= folders
-        for ypage in paginator.paginate(Bucket=BUCKET, Prefix=base, Delimiter="/"):
-            for ycp in ypage.get("CommonPrefixes", []):
+        for page in paginator.paginate(Bucket=BUCKET, Prefix=base):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
                 try:
-                    year = int(ycp["Prefix"].split("year=")[-1].rstrip("/"))
-                except (ValueError, IndexError):
+                    y = int(key.split("/year=")[1].split("/")[0])
+                    m = int(key.split("/month=")[1].split("/")[0])
+                    months.add((y, m))
+                except (IndexError, ValueError):
                     continue
-
-                # Level 2 — month= folders
-                for mpage in paginator.paginate(Bucket=BUCKET, Prefix=ycp["Prefix"], Delimiter="/"):
-                    for mcp in mpage.get("CommonPrefixes", []):
-                        try:
-                            month = int(mcp["Prefix"].split("month=")[-1].rstrip("/"))
-                        except (ValueError, IndexError):
-                            continue
-
-                        # Level 3 — day= folders
-                        for dpage in paginator.paginate(Bucket=BUCKET, Prefix=mcp["Prefix"], Delimiter="/"):
-                            for dcp in dpage.get("CommonPrefixes", []):
-                                try:
-                                    day = int(dcp["Prefix"].split("day=")[-1].rstrip("/"))
-                                    dates.append(date(year, month, day))
-                                except (ValueError, IndexError):
-                                    continue
     except Exception as exc:
         log.error("Error fetching available dates: %s", exc)
 
-    return sorted(dates)
+    dates: list[date] = []
+    for year, month in sorted(months):
+        d = date(year, month, 1)
+        # Day 1 of each month is enough — Streamlit treats the picker as a range.
+        dates.append(d)
+        # Last day available — approximate via month end (works for the picker).
+        next_month = date(year + (month // 12), (month % 12) + 1, 1)
+        dates.append(next_month - timedelta(days=1))
+    return sorted(set(dates))
 
 
 # ── Data loading ──────────────────────────────────────────────────────────────
 
-def _build_prefixes(locations: list[str], start: date, end: date) -> list[str]:
-    """Build all S3 prefixes for a location × date range cross product."""
-    prefixes = []
-    current = start
-    while current <= end:
-        for loc in locations:
-            prefixes.append(
-                f"bronze/gym_counts/location_name={loc}/"
-                f"year={current.year}/month={current.month:02d}/day={current.day:02d}/"
-            )
-        current += timedelta(days=1)
-    return prefixes
+def _months_in_range(start: date, end: date) -> list[tuple[int, int]]:
+    """Yield every (year, month) tuple between start and end inclusive."""
+    months: list[tuple[int, int]] = []
+    y, m = start.year, start.month
+    while (y, m) <= (end.year, end.month):
+        months.append((y, m))
+        m += 1
+        if m > 12:
+            y += 1
+            m = 1
+    return months
 
 
-def _list_csv_keys(s3, prefix: str) -> list[str]:
-    """Return all .csv object keys under a prefix."""
-    paginator = s3.get_paginator("list_objects_v2")
-    keys = []
+def _read_silver_parquet(s3, key: str) -> Optional[pd.DataFrame]:
     try:
-        for page in paginator.paginate(Bucket=BUCKET, Prefix=prefix):
-            for obj in page.get("Contents", []):
-                if obj["Key"].endswith(".csv"):
-                    keys.append(obj["Key"])
+        body = s3.get_object(Bucket=BUCKET, Key=key)["Body"].read()
+        return pd.read_parquet(io.BytesIO(body))
     except Exception as exc:
-        log.warning("Could not list %s: %s", prefix, exc)
-    return keys
+        log.warning("Could not read %s: %s", key, exc)
+        return None
 
 
 @st.cache_data(ttl=600)
@@ -132,29 +106,24 @@ def load_data_from_s3(
     end_date: date,
     locations: list[str],
 ) -> pd.DataFrame:
-    """
-    Load all hourly CSV files from S3 for the given date range and locations.
-    Results are cached for 10 minutes. Returns an empty DataFrame on failure.
-    """
+    """Load silver Parquet files for the requested location × month grid."""
     s3 = get_s3_client()
-    prefixes = _build_prefixes(locations, start_date, end_date)
-
     frames: list[pd.DataFrame] = []
-    failed = 0
-
-    for prefix in prefixes:
-        for key in _list_csv_keys(s3, prefix):
-            try:
-                obj = s3.get_object(Bucket=BUCKET, Key=key)
-                frames.append(pd.read_csv(io.BytesIO(obj["Body"].read())))
-            except Exception as exc:
-                log.warning("Failed to read %s: %s", key, exc)
-                failed += 1
+    for loc in locations:
+        for year, month in _months_in_range(start_date, end_date):
+            key = (
+                f"silver/gym_counts/location_name={loc}/"
+                f"year={year}/month={month:02d}/data.parquet"
+            )
+            df = _read_silver_parquet(s3, key)
+            if df is not None and not df.empty:
+                frames.append(df)
 
     if not frames:
         return pd.DataFrame()
 
-    if failed:
-        log.warning("%d files could not be read", failed)
-
-    return pd.concat(frames, ignore_index=True)
+    df = pd.concat(frames, ignore_index=True)
+    df["pulled_at_utc"] = pd.to_datetime(df["pulled_at_utc"], utc=True, format="mixed")
+    end_inclusive = pd.Timestamp(end_date, tz="UTC") + pd.Timedelta(days=1)
+    return df[(df["pulled_at_utc"] >= pd.Timestamp(start_date, tz="UTC"))
+              & (df["pulled_at_utc"] < end_inclusive)].reset_index(drop=True)
