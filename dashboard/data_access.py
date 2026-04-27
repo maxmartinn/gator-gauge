@@ -58,8 +58,10 @@ def get_available_dates() -> list[date]:
 
     s3 = get_s3_client()
     paginator = s3.get_paginator("list_objects_v2")
-    # All locations are scraped together, so any one of them contains the full date set.
-    sample_loc = locations[0]
+    # SWRC Fitness Total is the only partition with the full historical
+    # archive (back to 2025); newer per-room partitions only start when
+    # ingestion was rebuilt. Fall back to alphabetical if absent.
+    sample_loc = "SWRC Fitness Total" if "SWRC Fitness Total" in locations else locations[0]
     base = f"bronze/gym_counts/location_name={sample_loc}/"
     dates: list[date] = []
 
