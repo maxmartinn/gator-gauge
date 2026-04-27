@@ -99,18 +99,24 @@ def write_csv_local(rows):
         writer.writerows(rows)
 
 
+def _safe_partition(name):
+    return name.strip().replace("/", "_").replace(" ", "_")
+
+
 def upload_to_s3(rows):
     bucket = os.environ["GATOR_GAUGE_S3_BUCKET"]
     prefix = os.environ.get("GATOR_GAUGE_S3_PREFIX", "bronze/gym_counts").strip("/")
     now = datetime.now(timezone.utc)
-    key = f"{prefix}/dt={now:%Y-%m-%d}/gym_counts_{now:%Y%m%dT%H%M%SZ}.csv"
-    boto3.client("s3").put_object(
-        Bucket=bucket,
-        Key=key,
-        Body=rows_to_csv_bytes(rows),
-        ContentType="text/csv",
-    )
-    logging.info(f"Uploaded {len(rows)} rows to s3://{bucket}/{key}")
+    s3 = boto3.client("s3")
+    for row in rows:
+        partition = _safe_partition(row["location_name"])
+        key = (
+            f"{prefix}/location_name={partition}/dt={now:%Y-%m-%d}"
+            f"/gym_counts_{now:%Y%m%dT%H%M%SZ}.csv"
+        )
+        body = rows_to_csv_bytes([row])
+        s3.put_object(Bucket=bucket, Key=key, Body=body, ContentType="text/csv")
+    logging.info(f"Uploaded {len(rows)} per-location objects to s3://{bucket}/{prefix}/")
 
 
 def run(no_local=False, no_s3=False):
