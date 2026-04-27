@@ -40,7 +40,7 @@ AGGREGATES = {
     },
     "SRFC Fitness Total": {
         "facility_name": "SRFC",
-        "members": ["SRFC Weight Room", "SRFC Cardio Room"],
+        "members": ["SRFC Weight Room", "SRFC Cardio Room", "SRFC Lower Functional Area"],
     },
 }
 
