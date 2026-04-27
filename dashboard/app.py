@@ -70,7 +70,11 @@ with st.sidebar:
     selected_locations = st.multiselect(
         "Filter locations",
         options=all_locations,
-        default=all_locations[:6],
+        default=(
+            ["SWRC Fitness Total"]
+            if "SWRC Fitness Total" in all_locations
+            else all_locations[:6]
+        ),
     )
     if not selected_locations:
         selected_locations = all_locations
