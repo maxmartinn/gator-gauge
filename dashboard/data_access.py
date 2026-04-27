@@ -101,6 +101,19 @@ def _read_silver_parquet(s3, key: str) -> Optional[pd.DataFrame]:
 
 
 @st.cache_data(ttl=600)
+def _silver_manifest() -> set[str]:
+    """Return the set of every silver Parquet key currently in the bucket."""
+    s3 = get_s3_client()
+    paginator = s3.get_paginator("list_objects_v2")
+    keys: set[str] = set()
+    for page in paginator.paginate(Bucket=BUCKET, Prefix="silver/gym_counts/"):
+        for obj in page.get("Contents", []):
+            if obj["Key"].endswith("/data.parquet"):
+                keys.add(obj["Key"])
+    return keys
+
+
+@st.cache_data(ttl=600)
 def load_data_from_s3(
     start_date: date,
     end_date: date,
@@ -108,6 +121,7 @@ def load_data_from_s3(
 ) -> pd.DataFrame:
     """Load silver Parquet files for the requested location × month grid."""
     s3 = get_s3_client()
+    manifest = _silver_manifest()
     frames: list[pd.DataFrame] = []
     for loc in locations:
         for year, month in _months_in_range(start_date, end_date):
@@ -115,6 +129,8 @@ def load_data_from_s3(
                 f"silver/gym_counts/location_name={loc}/"
                 f"year={year}/month={month:02d}/data.parquet"
             )
+            if key not in manifest:
+                continue
             df = _read_silver_parquet(s3, key)
             if df is not None and not df.empty:
                 frames.append(df)
