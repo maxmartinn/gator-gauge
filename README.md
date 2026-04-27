@@ -1,79 +1,184 @@
-# Gator Gains
+# Gator Gauge
 
-## Overview
-Gator Gains is a project designed to predict the number of people at specific gym locations based on historical data. The dataset includes information such as timestamps, facility names, location names, current counts, total capacity, and more. The goal is to build a predictive model that estimates the number of people at a given location based on the time and day of the week.
+Gator Gauge tracks and visualizes University of Florida gym occupancy data. The project currently has three working lanes:
 
-## Project Structure
+- `injestion/`: scraper container for collecting gym count data and writing to S3.
+- `dashboard/`: Streamlit dashboard for historical analysis and occupancy predictions.
+- `scripts/`: early local data-prep, report, and model-training scripts.
 
+The `.claude` worktree handoff included a Streamlit dashboard implementation. That work has been brought into the main workspace and tightened so the dashboard can be run from the root Makefile.
+
+## Current Status
+
+Working now:
+
+- One-shot ingestion from the UF gym API to local CSV snapshots and S3.
+- Historical dashboard reading from `s3://gator-gains-data/bronze/gym_counts/`.
+- Ridge regression prediction model in `dashboard/model.py`.
+- Prediction tab for a selected location, date, and hour.
+- Best-time and avoid-time recommendations for a selected day.
+- Date and location filters.
+- Occupancy trend line chart.
+- Hour-by-day heatmap.
+- Average occupancy by facility chart.
+- Peak hour/location table.
+- AWS access smoke test.
+
+Still incomplete:
+
+- No prediction API exists yet.
+- No deployment configuration for the dashboard exists yet.
+- Local preprocessing scripts still expect local CSV files under `data/`, while the dashboard reads from S3.
+
+## Repository Layout
+
+```text
+.
+|-- dashboard/
+|   |-- app.py
+|   |-- charts.py
+|   |-- data_access.py
+|   |-- model.py
+|   |-- transforms.py
+|   |-- test_aws_access.py
+|   `-- requirements.txt
+|-- injestion/
+|   |-- Dockerfile
+|   |-- gym_scraper.py
+|   `-- requirements.txt
+|-- scripts/
+|   |-- basic_preprocess.py
+|   |-- generate_report.py
+|   |-- train_model.py
+|   `-- requirements.txt
+|-- docker-compose.yml
+|-- Makefile
+`-- README.md
 ```
-├── api/                # API for serving predictions
-├── dashboard/          # Dashboard for visualizing data and predictions
-├── data/
-│   ├── processed/      # Processed data for modeling
-│   └── raw/            # Raw data (e.g., gym_capacity_log.csv)
-├── ingestion/
-│   └── gym_scraper.py  # Script for scraping gym data
-├── model/              # Model training and storage
-├── notebooks/          # Jupyter notebooks for exploratory data analysis
-├── requirements.txt    # Python dependencies
-├── docker-compose.yml  # Docker setup for the project
-└── README.md           # Project documentation
+
+Note: the folder is currently named `injestion`. Keep that spelling unless you are ready to update all references together.
+
+## Setup
+
+Use Python 3.9+.
+
+For the dashboard:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r dashboard/requirements.txt
 ```
 
-## Dataset
-The dataset contains the following columns:
-- `pulled_at_utc`: Timestamp when the data was pulled.
-- `facility_name`: Name of the facility.
-- `location_name`: Specific location within the facility.
-- `last_count`: Current count of people at the location.
-- `total_capacity`: Maximum capacity of the location.
-- `percent_full`: Percentage of the location's capacity that is currently occupied.
-- `last_updated_source_time`: Last time the source updated the data.
-- `is_closed`: Boolean indicating if the location is closed.
+Configure AWS credentials with read access to the `gator-gains-data` bucket. The Makefile defaults to the `gator-gauge` profile:
 
-## Goals
-1. Preprocess the data to extract useful features such as day of the week and hour of the day.
-2. Build a predictive model to estimate the number of people at a location.
-3. Deploy the model via an API for real-time predictions.
-4. Create a dashboard to visualize historical data and predictions.
+```bash
+aws configure --profile gator-gauge
+```
 
-## Getting Started
+Or export a different profile before running commands:
 
-### Prerequisites
-- Python 3.8+
-- Docker (optional for containerized setup)
+```bash
+export AWS_PROFILE=my-profile
+```
 
-### Installation
-1. Clone the repository:
-   ```bash
-   git clone <repository-url>
-   cd gator_gains
-   ```
-2. Install dependencies:
-   ```bash
-   pip install -r requirements.txt
-   ```
+## Ingest One Batch
 
-### Running the Project
-1. **Data Ingestion**:
-   - Use `gym_scraper.py` to scrape or update the dataset.
-2. **Model Training**:
-   - Train the predictive model using scripts in the `model/` directory.
-3. **API**:
-   - Start the API server to serve predictions.
-4. **Dashboard**:
-   - Launch the dashboard to visualize data and predictions.
+From the repo root:
 
-### Docker Setup
-To run the project using Docker:
-1. Build and start the containers:
-   ```bash
-   docker-compose up --build
-   ```
-2. Access the API and dashboard via the provided URLs.
+```bash
+pip install -r injestion/requirements.txt
+make ingest-once
+```
 
-## Contributing
-Contributions are welcome! Please fork the repository and submit a pull request.
+`make ingest-once` fetches the current UF gym counts once, writes a timestamped local CSV under `data/raw/`, uploads location-partitioned CSVs to S3, and exits.
 
-## License
-This project is licensed under the MIT License.
+Useful direct variants:
+
+```bash
+python3 injestion/gym_scraper.py --no-s3
+python3 injestion/gym_scraper.py --no-local
+python3 injestion/gym_scraper.py --loop --interval 600
+```
+
+Docker Compose runs the same one-shot job and mounts your local AWS config read-only:
+
+```bash
+docker compose up --build
+```
+
+The one-shot command is the recommended production shape. Schedule it every 10 minutes with cron, GitHub Actions, EventBridge, or ECS instead of keeping a local process running forever.
+
+## Run The Dashboard
+
+From the repo root:
+
+```bash
+make test-dashboard
+make dashboard
+```
+
+Then open `http://localhost:8501`.
+
+The dashboard discovers the available S3 date range, then defaults to the most recent 7 days in that range.
+
+The prediction tab trains a Ridge regression model from the S3 data. It uses cyclical hour, day-of-week, and month features, a weekend flag, and one-hot location encoding. The model also filters out closed facilities, impossible occupancy percentages, off-hours rows, and per-location statistical outliers before training.
+
+## Data Contract
+
+The dashboard expects CSV objects in S3 under:
+
+```text
+s3://gator-gains-data/bronze/gym_counts/location_name={location}/year={YYYY}/month={MM}/day={DD}/
+```
+
+Expected columns:
+
+- `pulled_at_utc`
+- `facility_name`
+- `location_name`
+- `last_count`
+- `total_capacity`
+- `percent_full`
+- `last_updated_source_time`
+- `is_closed`
+
+## Where To Go From Here
+
+1. Verify the S3 data window.
+   Run `make test-dashboard`, then confirm whether current data exists beyond `2025-05-15`. If it does, update the dashboard default dates or make the app discover the latest available partition automatically.
+
+2. Make ingestion repeatable.
+   Schedule `make ingest-once` every 10 minutes with cron, GitHub Actions, EventBridge, or ECS. Keep AWS credentials out of source control; use an AWS profile locally and an IAM role in AWS.
+
+3. Unify local scripts with S3.
+   `scripts/basic_preprocess.py` expects `../data/raw/gym_raw_data.csv`, but the dashboard reads S3. Decide whether local modeling should pull from S3 directly or use an exported local snapshot.
+
+4. Improve model accuracy.
+   Add features that explain real demand swings: academic calendar, football/basketball game days, holidays, weather, exams, and recent lagged occupancy.
+
+5. Persist a trained model artifact.
+   The dashboard currently trains in-process from S3. For deployment, train on a schedule and save a versioned artifact to S3 so app startup is faster and reproducible.
+
+6. Add tests around transforms.
+   Start with `dashboard/transforms.py` and `dashboard/model.py`: timestamp parsing, Eastern time conversion, model filters, feature generation, and prediction bounds.
+
+7. Plan deployment.
+   For private usage, Streamlit Community Cloud with secrets or an internal AWS deployment is enough. For public usage, add scoped IAM credentials, request caching, and a cost-aware data access layer before publishing.
+
+## Useful Commands
+
+```bash
+make ingest-once    # Fetch current counts and upload them to S3
+make dashboard       # Run Streamlit dashboard
+make test-dashboard  # Verify AWS/S3 access
+make preprocess      # Run local preprocessing script
+make report          # Generate local profiling report
+make all             # preprocess, train, report
+```
+
+## Notes
+
+- The dashboard uses Streamlit caching with a 10-minute TTL in `dashboard/data_access.py`.
+- Streamlit reads credentials through `boto3`, so normal AWS CLI environment variables and profile configuration apply.
+- `data/` and `reports/` are gitignored because they are generated or local artifacts.

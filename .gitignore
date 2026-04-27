@@ -1,5 +1,8 @@
 data/
 reports/
+.claude/
+.venv/
+venv/
 # Node.js dependencies
 node_modules/
 

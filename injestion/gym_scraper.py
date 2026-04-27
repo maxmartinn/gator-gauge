@@ -1,12 +1,17 @@
 import argparse
 import csv
 import io
+import json
 import logging
 import os
+import subprocess
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import boto3
 import requests
+
+SOURCE_TIMEZONE = ZoneInfo("America/New_York")
 
 logging.basicConfig(level=logging.INFO)
 
@@ -57,9 +62,25 @@ FIELDNAMES = [
 
 
 def fetch_json():
-    r = requests.get(URL, timeout=10)
-    r.raise_for_status()
-    return r.json()
+    try:
+        r = requests.get(URL, timeout=10)
+        r.raise_for_status()
+        return r.json()
+    except requests.exceptions.SSLError:
+        logging.warning("Python SSL request failed; retrying with curl")
+        completed = subprocess.run(
+            ["curl", "--fail", "--silent", "--show-error", URL],
+            capture_output=True, check=True, text=True, timeout=15,
+        )
+        return json.loads(completed.stdout)
+
+
+def parse_source_time(value):
+    text = str(value).strip().rstrip("Z")
+    parsed = datetime.fromisoformat(text)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=SOURCE_TIMEZONE)
+    return parsed.astimezone(timezone.utc).isoformat()
 
 
 def format_rows(json_data):
@@ -72,11 +93,7 @@ def format_rows(json_data):
             count = int(loc["LastCount"])
             capacity = int(loc["TotalCapacity"])
             percent = round((count / capacity) * 100, 2) if capacity > 0 else 0
-            last_updated_source_time = (
-                datetime.fromisoformat(loc["LastUpdatedDateAndTime"])
-                .astimezone(timezone.utc)
-                .isoformat()
-            )
+            last_updated_source_time = parse_source_time(loc["LastUpdatedDateAndTime"])
             rows.append({
                 "pulled_at_utc": now,
                 "facility_name": loc["FacilityName"].strip(),

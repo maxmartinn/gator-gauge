@@ -7,4 +7,9 @@ services:
       dockerfile: Dockerfile
     volumes:
       - ./data/raw:/app/data/raw
-    restart: always
+      - ~/.aws:/root/.aws:ro
+    environment:
+      AWS_PROFILE: ${AWS_PROFILE:-gator-gauge}
+      GATOR_GAUGE_S3_BUCKET: ${GATOR_GAUGE_S3_BUCKET:-gator-gains-data}
+      GATOR_GAUGE_S3_PREFIX: ${GATOR_GAUGE_S3_PREFIX:-bronze/gym_counts}
+    restart: "no"
