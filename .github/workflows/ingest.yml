@@ -1,0 +1,47 @@
+name: Gym Data Ingestion
+
+on:
+  schedule:
+    # Run every hour at :00 — GitHub Actions uses UTC
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions tab (useful for testing)
+    inputs:
+      dry_run:
+        description: 'Dry run — fetch data but skip S3 upload'
+        required: false
+        default: 'false'
+
+jobs:
+  ingest:
+    name: Fetch gym counts → S3
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: injestion/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r injestion/requirements.txt
+
+      - name: Run ingestion (S3 upload)
+        if: github.event.inputs.dry_run != 'true'
+        env:
+          AWS_ACCESS_KEY_ID:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION:    us-east-1
+          GATOR_GAUGE_S3_BUCKET: gator-gains-data
+          GATOR_GAUGE_S3_PREFIX: bronze/gym_counts
+        run: python injestion/gym_scraper.py --no-local
+
+      - name: Run ingestion (dry run — fetch only)
+        if: github.event.inputs.dry_run == 'true'
+        run: python injestion/gym_scraper.py --no-local --no-s3
