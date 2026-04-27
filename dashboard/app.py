@@ -77,7 +77,8 @@ with st.sidebar:
         ),
     )
     if not selected_locations:
-        selected_locations = all_locations
+        st.info("Select at least one location to load data.")
+        st.stop()
 
     st.markdown("---")
     st.markdown("**Prediction Model**")
